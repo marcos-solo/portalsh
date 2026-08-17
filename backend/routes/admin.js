@@ -91,6 +91,10 @@ router.post('/trainers', authMiddleware, async (req, res) => {
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
     const passwordHash = bcrypt.hashSync(password, 10);
     const trainer = await Trainer.create({ name, email, passwordHash, assignedCourseIds });
+    res.json(normalizeTrainer(trainer, password));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // Protected routes
