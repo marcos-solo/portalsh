@@ -2,8 +2,32 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { Admin, Student, Quiz, Question, Submission, FileSubmission } = require('../models');
+const { Admin, Trainer, Student, Quiz, Question, Submission, FileSubmission } = require('../models');
 require('dotenv').config();
+
+function normalizeStudent(student) {
+  if (!student) return null;
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    roll: student.roll,
+    rollNumber: student.rollNumber || student.roll,
+    password: student.password || 'student123',
+    assignedCourseIds: Array.isArray(student.assignedCourseIds) ? student.assignedCourseIds : [],
+  };
+}
+
+function normalizeTrainer(trainer, passwordOverride) {
+  if (!trainer) return null;
+  return {
+    id: trainer.id,
+    name: trainer.name,
+    email: trainer.email,
+    password: passwordOverride || trainer.password || 'password123',
+    assignedCourseIds: Array.isArray(trainer.assignedCourseIds) ? trainer.assignedCourseIds : [],
+  };
+}
 
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
@@ -39,11 +63,67 @@ router.post('/login', async (req, res) => {
   res.json({ token });
 });
 
+router.post('/trainers/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const trainer = await Trainer.findOne({ where: { email } });
+    if (!trainer) return res.status(401).json({ error: 'Invalid trainer credentials' });
+    const ok = trainer.verifyPassword(password);
+    if (!ok) return res.status(401).json({ error: 'Invalid trainer credentials' });
+    res.json({ user: normalizeTrainer(trainer, password) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.get('/trainers', authMiddleware, async (req, res) => {
+  try {
+    const trainers = await Trainer.findAll({ order: [['id', 'DESC']] });
+    res.json(trainers.map(normalizeTrainer));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/trainers', authMiddleware, async (req, res) => {
+  try {
+    const { name, email, password, assignedCourseIds = [] } = req.body;
+    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+    const trainer = await Trainer.create({ name, email, password, assignedCourseIds });
+    res.json(normalizeTrainer(trainer, password));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // Protected routes
 router.post('/students', authMiddleware, async (req, res) => {
   try {
-    const s = await Student.create(req.body);
-    res.json(s);
+    const { name, email, roll, rollNumber, password, assignedCourseIds = [] } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name required' });
+    const emailVal = email || `${(roll || rollNumber || name).toString().replace(/\s+/g, '_')}@local`;
+    const rollVal = roll || rollNumber || 'STU-' + Date.now();
+    let student = await Student.findOne({ where: { email: emailVal } });
+    if (!student) {
+      student = await Student.create({
+        name,
+        email: emailVal,
+        roll: rollVal,
+        rollNumber: rollVal,
+        password: password || 'student123',
+        assignedCourseIds,
+      });
+    }
+    res.json(normalizeStudent(student));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.get('/students', authMiddleware, async (req, res) => {
+  try {
+    const students = await Student.findAll({ order: [['id', 'DESC']] });
+    res.json(students.map(normalizeStudent));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

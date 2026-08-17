@@ -3,17 +3,70 @@ const router = express.Router();
 const { Student, Quiz, Question, Submission, FileSubmission } = require('../models');
 const upload = require('../middleware/upload');
 
+function normalizeStudent(student) {
+  if (!student) return null;
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    roll: student.roll,
+    rollNumber: student.rollNumber || student.roll,
+    password: student.password || 'student123',
+    assignedCourseIds: Array.isArray(student.assignedCourseIds) ? student.assignedCourseIds : [],
+  };
+}
+
+router.get('/', async (req, res) => {
+  try {
+    const students = await Student.findAll({ order: [['id', 'DESC']] });
+    res.json(students.map(normalizeStudent));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Public student registration/upsert
 router.post('/', async (req, res) => {
   try {
-    const { name, email, roll } = req.body;
+    const { name, email, roll, rollNumber, password, assignedCourseIds = [] } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
-    const emailVal = email || `${(roll || name).toString().replace(/\s+/g, '_')}@local`;
+    const emailVal = email || `${(roll || rollNumber || name).toString().replace(/\s+/g, '_')}@local`;
+    const rollVal = roll || rollNumber || 'STU-' + Date.now();
     let student = await Student.findOne({ where: { email: emailVal } });
     if (!student) {
-      student = await Student.create({ name, email: emailVal, roll });
+      student = await Student.create({
+        name,
+        email: emailVal,
+        roll: rollVal,
+        rollNumber: rollVal,
+        password: password || 'student123',
+        assignedCourseIds,
+      });
     }
-    res.json(student);
+    res.json(normalizeStudent(student));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/login', async (req, res) => {
+  try {
+    const { identifier, email, password } = req.body;
+    const loginValue = identifier || email;
+    if (!loginValue || !password) return res.status(400).json({ error: 'Missing credentials' });
+
+    const student = await Student.findOne({
+      where: { email: loginValue }
+    }) || await Student.findOne({
+      where: { rollNumber: loginValue }
+    }) || await Student.findOne({
+      where: { roll: loginValue }
+    });
+
+    if (!student) return res.status(401).json({ error: 'Invalid Student ID/Email or Password' });
+    if (student.password !== password) return res.status(401).json({ error: 'Invalid Student ID/Email or Password' });
+
+    res.json({ user: normalizeStudent(student) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -22,7 +75,7 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const s = await Student.findByPk(req.params.id);
   if (!s) return res.status(404).json({ error: 'Not found' });
-  res.json(s);
+  res.json(normalizeStudent(s));
 });
 
 router.get('/:id/quizzes', async (req, res) => {

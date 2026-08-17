@@ -2,6 +2,7 @@ const Sequelize = require('sequelize');
 const sequelize = require('../config/database');
 
 const Admin = require('./Admin')(sequelize);
+const Trainer = require('./Trainer')(sequelize);
 const Student = require('./Student')(sequelize);
 const Quiz = require('./Quiz')(sequelize);
 const Question = require('./Question')(sequelize);
@@ -24,6 +25,7 @@ module.exports = {
   sequelize,
   Sequelize,
   Admin,
+  Trainer,
   Student,
   Quiz,
   Question,

@@ -42,12 +42,12 @@ export const UnifiedLoginPortal = () => {
           setError(res.error || 'Invalid admin credentials');
         }
       } else if (activeRole === 'trainer') {
-        const res = loginTrainer(identifier.trim(), password);
+        const res = await loginTrainer(identifier.trim(), password);
         if (!res.success) {
           setError(res.error || 'Invalid trainer credentials');
         }
       } else if (activeRole === 'student') {
-        const res = loginStudent(identifier.trim(), password);
+        const res = await loginStudent(identifier.trim(), password);
         if (!res.success) {
           setError(res.error || 'Invalid student credentials');
         }

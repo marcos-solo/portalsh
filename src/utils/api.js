@@ -18,6 +18,30 @@ async function request(path, opts = {}) {
   return json;
 }
 
+function normalizeStudent(student) {
+  if (!student) return null;
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    roll: student.roll,
+    rollNumber: student.rollNumber || student.roll,
+    password: student.password || 'student123',
+    assignedCourseIds: Array.isArray(student.assignedCourseIds) ? student.assignedCourseIds : [],
+  };
+}
+
+function normalizeTrainer(trainer) {
+  if (!trainer) return null;
+  return {
+    id: trainer.id,
+    name: trainer.name,
+    email: trainer.email,
+    password: trainer.password || 'password123',
+    assignedCourseIds: Array.isArray(trainer.assignedCourseIds) ? trainer.assignedCourseIds : [],
+  };
+}
+
 export async function loginAdmin(username, password) {
   return request('/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
 }
@@ -26,8 +50,50 @@ export async function changeAdminPassword(currentPassword, newPassword) {
   return request('/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }) });
 }
 
-export async function registerStudent({ name, email, roll }) {
-  return request('/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, roll }) });
+export async function fetchStudents() {
+  const data = await request('/students');
+  return Array.isArray(data) ? data.map(normalizeStudent) : [];
+}
+
+export async function fetchTrainers() {
+  const data = await request('/admin/trainers');
+  return Array.isArray(data) ? data.map(normalizeTrainer) : [];
+}
+
+export async function createTrainer(payload) {
+  const data = await request('/admin/trainers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return normalizeTrainer(data);
+}
+
+export async function loginTrainer(email, password) {
+  const data = await request('/admin/trainers/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  return { user: normalizeTrainer(data.user) };
+}
+
+export async function registerStudent({ name, email, roll, rollNumber, password, assignedCourseIds }) {
+  const data = await request('/students', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, roll, rollNumber, password, assignedCourseIds }),
+  });
+  return normalizeStudent(data);
+}
+
+export async function loginStudent(identifier, password) {
+  const data = await request('/students/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password }),
+  });
+  return { user: normalizeStudent(data.user) };
 }
 
 export async function submitStudentSubmission({ studentId, quizId, answers, files }) {
@@ -53,4 +119,4 @@ export async function uploadFilesToSubmission(submissionId, files) {
   return res.json();
 }
 
-export default { loginAdmin, changeAdminPassword, registerStudent, submitStudentSubmission, uploadFilesToSubmission };
+export default { loginAdmin, changeAdminPassword, fetchStudents, fetchTrainers, createTrainer, loginTrainer, registerStudent, loginStudent, submitStudentSubmission, uploadFilesToSubmission };

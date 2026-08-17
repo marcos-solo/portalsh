@@ -16,6 +16,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+async function seedDefaultAdmin() {
+  const { Admin } = require('./models');
+  const username = process.env.ADMIN_USERNAME || 'admin';
+  const password = process.env.ADMIN_PASSWORD || 'admin123';
+  const existing = await Admin.findOne({ where: { username } });
+  if (!existing) {
+    await Admin.create({ username, passwordHash: require('bcryptjs').hashSync(password, 10) });
+    console.log(`Seeded default admin: ${username}/${password}`);
+  }
+}
+
 // Basic rate limiting
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 120 });
 app.use(limiter);
@@ -54,6 +65,7 @@ async function start() {
   } else {
     await sequelize.sync();
   }
+  await seedDefaultAdmin();
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 

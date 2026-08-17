@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_QUIZZES } from '../data/sampleQuizzes';
 import { prepareExamQuestions } from '../utils/shuffle';
+import * as api from '../utils/api';
 
 const QuizContext = createContext();
 
@@ -114,6 +115,21 @@ export const QuizProvider = ({ children }) => {
     return INITIAL_TRAINERS;
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const backendTrainers = await api.fetchTrainers();
+        if (!cancelled && Array.isArray(backendTrainers) && backendTrainers.length > 0) {
+          setTrainers(backendTrainers);
+        }
+      } catch (e) {
+        console.warn('Trainer fetch skipped; local fallback is active.', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Students state
   const [students, setStudents] = useState(() => {
     const saved = localStorage.getItem(STUDENTS_STORAGE_KEY);
@@ -122,6 +138,21 @@ export const QuizProvider = ({ children }) => {
     }
     return INITIAL_STUDENTS;
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const backendStudents = await api.fetchStudents();
+        if (!cancelled && Array.isArray(backendStudents) && backendStudents.length > 0) {
+          setStudents(backendStudents);
+        }
+      } catch (e) {
+        console.warn('Student fetch skipped; local fallback is active.', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Logged-in Trainer
   const [loggedInTrainer, setLoggedInTrainer] = useState(() => {
@@ -257,17 +288,27 @@ export const QuizProvider = ({ children }) => {
   // ----------------------------------------------------
   // TRAINER ACTIONS (ADMIN & TRAINER)
   // ----------------------------------------------------
-  const createTrainer = (trainerData) => {
-    const newTrainer = {
-      id: 'trainer_' + Date.now(),
+  const createTrainer = async (trainerData) => {
+    const payload = {
       name: trainerData.name || 'New Trainer',
       email: trainerData.email || '',
       password: trainerData.password || 'password123',
       assignedCourseIds: trainerData.assignedCourseIds || [],
-      createdAt: new Date().toISOString()
     };
-    setTrainers((prev) => [newTrainer, ...prev]);
-    return newTrainer;
+
+    try {
+      const savedTrainer = await api.createTrainer(payload);
+      setTrainers((prev) => [savedTrainer, ...prev]);
+      return savedTrainer;
+    } catch (e) {
+      const newTrainer = {
+        id: 'trainer_' + Date.now(),
+        ...payload,
+        createdAt: new Date().toISOString()
+      };
+      setTrainers((prev) => [newTrainer, ...prev]);
+      return newTrainer;
+    }
   };
 
   const updateTrainer = (trainerId, updatedData) => {
@@ -288,14 +329,22 @@ export const QuizProvider = ({ children }) => {
     updateTrainer(trainerId, { assignedCourseIds: courseIds });
   };
 
-  const loginTrainer = (email, password) => {
-    const found = trainers.find(t => t.email.toLowerCase() === email.toLowerCase().trim() && t.password === password);
-    if (found) {
-      setLoggedInTrainer(found);
+  const loginTrainer = async (email, password) => {
+    try {
+      const result = await api.loginTrainer(email, password);
+      const trainer = result.user;
+      setLoggedInTrainer(trainer);
       setActiveRole('trainer');
-      return { success: true, trainer: found };
+      return { success: true, trainer };
+    } catch (e) {
+      const found = trainers.find(t => t.email.toLowerCase() === email.toLowerCase().trim() && t.password === password);
+      if (found) {
+        setLoggedInTrainer(found);
+        setActiveRole('trainer');
+        return { success: true, trainer: found };
+      }
+      return { success: false, error: 'Invalid email or password' };
     }
-    return { success: false, error: 'Invalid email or password' };
   };
 
   const logoutTrainer = () => {
@@ -305,18 +354,30 @@ export const QuizProvider = ({ children }) => {
   // ----------------------------------------------------
   // STUDENT ACTIONS (ADMIN & STUDENT)
   // ----------------------------------------------------
-  const createStudent = (studentData) => {
-    const newStudent = {
-      id: 'student_' + Date.now(),
+  const createStudent = async (studentData) => {
+    const payload = {
       name: studentData.name || 'New Student',
       email: studentData.email || '',
+      roll: studentData.rollNumber || 'STU-' + Math.floor(1000 + Math.random() * 9000),
       rollNumber: studentData.rollNumber || 'STU-' + Math.floor(1000 + Math.random() * 9000),
       password: studentData.password || 'student123',
       assignedCourseIds: studentData.assignedCourseIds || [],
-      createdAt: new Date().toISOString()
     };
-    setStudents((prev) => [newStudent, ...prev]);
-    return newStudent;
+
+    try {
+      const savedStudent = await api.registerStudent(payload);
+      setStudents((prev) => [savedStudent, ...prev]);
+      return savedStudent;
+    } catch (e) {
+      const newStudent = {
+        id: 'student_' + Date.now(),
+        ...payload,
+        email: payload.email || `${payload.rollNumber}@local`,
+        createdAt: new Date().toISOString()
+      };
+      setStudents((prev) => [newStudent, ...prev]);
+      return newStudent;
+    }
   };
 
   const updateStudent = (studentId, updatedData) => {
@@ -337,17 +398,25 @@ export const QuizProvider = ({ children }) => {
     updateStudent(studentId, { assignedCourseIds: courseIds });
   };
 
-  const loginStudent = (identifier, password) => {
-    const found = students.find(s => 
-      (s.email.toLowerCase() === identifier.toLowerCase().trim() || s.rollNumber.toLowerCase() === identifier.toLowerCase().trim()) && 
-      (s.password === password)
-    );
-    if (found) {
-      setLoggedInStudent(found);
+  const loginStudent = async (identifier, password) => {
+    try {
+      const result = await api.loginStudent(identifier, password);
+      const student = result.user;
+      setLoggedInStudent(student);
       setActiveRole('student');
-      return { success: true, student: found };
+      return { success: true, student };
+    } catch (e) {
+      const found = students.find(s => 
+        (s.email.toLowerCase() === identifier.toLowerCase().trim() || s.rollNumber.toLowerCase() === identifier.toLowerCase().trim()) && 
+        (s.password === password)
+      );
+      if (found) {
+        setLoggedInStudent(found);
+        setActiveRole('student');
+        return { success: true, student: found };
+      }
+      return { success: false, error: 'Invalid Student ID/Email or Password' };
     }
-    return { success: false, error: 'Invalid Student ID/Email or Password' };
   };
 
   const logoutStudent = () => {
