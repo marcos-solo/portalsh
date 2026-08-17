@@ -158,12 +158,11 @@ export const QuizProvider = ({ children }) => {
   });
 
   useEffect(() => {
-    if (!adminToken) return;
     let cancelled = false;
     (async () => {
       try {
         const backendStudents = await api.fetchStudents();
-        if (!cancelled && Array.isArray(backendStudents) && backendStudents.length > 0) {
+        if (!cancelled && Array.isArray(backendStudents)) {
           setStudents(backendStudents);
         }
       } catch (e) {
@@ -171,7 +170,7 @@ export const QuizProvider = ({ children }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [adminToken]);
+  }, []);
 
   // Logged-in Trainer
   const [loggedInTrainer, setLoggedInTrainer] = useState(() => {
@@ -308,17 +307,26 @@ export const QuizProvider = ({ children }) => {
   // TRAINER ACTIONS (ADMIN & TRAINER)
   // ----------------------------------------------------
   const createTrainer = async (trainerData) => {
+    const defaultCourseIds = courses.length > 0 ? courses.map(c => c.id) : ['course_1', 'course_2'];
     const payload = {
       name: trainerData.name || 'New Trainer',
       email: trainerData.email || '',
       password: trainerData.password || 'password123',
-      assignedCourseIds: trainerData.assignedCourseIds || [],
+      assignedCourseIds: (trainerData.assignedCourseIds && trainerData.assignedCourseIds.length > 0)
+        ? trainerData.assignedCourseIds
+        : defaultCourseIds,
     };
 
     try {
       const savedTrainer = await api.createTrainer(payload);
-      setTrainers((prev) => [savedTrainer, ...prev]);
-      return savedTrainer;
+      const normalized = {
+        ...savedTrainer,
+        assignedCourseIds: (savedTrainer.assignedCourseIds && savedTrainer.assignedCourseIds.length > 0)
+          ? savedTrainer.assignedCourseIds
+          : payload.assignedCourseIds
+      };
+      setTrainers((prev) => [normalized, ...prev.filter(t => t.id !== normalized.id)]);
+      return normalized;
     } catch (e) {
       const newTrainer = {
         id: 'trainer_' + Date.now(),
@@ -349,18 +357,28 @@ export const QuizProvider = ({ children }) => {
   };
 
   const loginTrainer = async (email, password) => {
+    const defaultCourseIds = courses.length > 0 ? courses.map(c => c.id) : ['course_1', 'course_2'];
     try {
       const result = await api.loginTrainer(email, password);
-      const trainer = result.user;
-      setLoggedInTrainer(trainer);
-      setActiveRole('trainer');
-      return { success: true, trainer };
+      let trainer = result.user;
+      if (trainer) {
+        if (!trainer.assignedCourseIds || trainer.assignedCourseIds.length === 0) {
+          trainer = { ...trainer, assignedCourseIds: defaultCourseIds };
+        }
+        setLoggedInTrainer(trainer);
+        setActiveRole('trainer');
+        return { success: true, trainer };
+      }
     } catch (e) {
       const found = trainers.find(t => t.email.toLowerCase() === email.toLowerCase().trim() && t.password === password);
       if (found) {
-        setLoggedInTrainer(found);
+        const trainer = {
+          ...found,
+          assignedCourseIds: (found.assignedCourseIds && found.assignedCourseIds.length > 0) ? found.assignedCourseIds : defaultCourseIds
+        };
+        setLoggedInTrainer(trainer);
         setActiveRole('trainer');
-        return { success: true, trainer: found };
+        return { success: true, trainer };
       }
       return { success: false, error: 'Invalid email or password' };
     }
@@ -374,19 +392,28 @@ export const QuizProvider = ({ children }) => {
   // STUDENT ACTIONS (ADMIN & STUDENT)
   // ----------------------------------------------------
   const createStudent = async (studentData) => {
+    const defaultCourseIds = courses.length > 0 ? courses.map(c => c.id) : ['course_1', 'course_2'];
     const payload = {
       name: studentData.name || 'New Student',
       email: studentData.email || '',
       roll: studentData.rollNumber || 'STU-' + Math.floor(1000 + Math.random() * 9000),
       rollNumber: studentData.rollNumber || 'STU-' + Math.floor(1000 + Math.random() * 9000),
       password: studentData.password || 'student123',
-      assignedCourseIds: studentData.assignedCourseIds || [],
+      assignedCourseIds: (studentData.assignedCourseIds && studentData.assignedCourseIds.length > 0)
+        ? studentData.assignedCourseIds
+        : defaultCourseIds,
     };
 
     try {
       const savedStudent = await api.registerStudent(payload);
-      setStudents((prev) => [savedStudent, ...prev]);
-      return savedStudent;
+      const normalized = {
+        ...savedStudent,
+        assignedCourseIds: (savedStudent.assignedCourseIds && savedStudent.assignedCourseIds.length > 0)
+          ? savedStudent.assignedCourseIds
+          : payload.assignedCourseIds
+      };
+      setStudents((prev) => [normalized, ...prev.filter(s => s.id !== normalized.id)]);
+      return normalized;
     } catch (e) {
       const newStudent = {
         id: 'student_' + Date.now(),
@@ -418,21 +445,31 @@ export const QuizProvider = ({ children }) => {
   };
 
   const loginStudent = async (identifier, password) => {
+    const defaultCourseIds = courses.length > 0 ? courses.map(c => c.id) : ['course_1', 'course_2'];
     try {
       const result = await api.loginStudent(identifier, password);
-      const student = result.user;
-      setLoggedInStudent(student);
-      setActiveRole('student');
-      return { success: true, student };
+      let student = result.user;
+      if (student) {
+        if (!student.assignedCourseIds || student.assignedCourseIds.length === 0) {
+          student = { ...student, assignedCourseIds: defaultCourseIds };
+        }
+        setLoggedInStudent(student);
+        setActiveRole('student');
+        return { success: true, student };
+      }
     } catch (e) {
       const found = students.find(s => 
         (s.email.toLowerCase() === identifier.toLowerCase().trim() || s.rollNumber.toLowerCase() === identifier.toLowerCase().trim()) && 
         (s.password === password)
       );
       if (found) {
-        setLoggedInStudent(found);
+        const student = {
+          ...found,
+          assignedCourseIds: (found.assignedCourseIds && found.assignedCourseIds.length > 0) ? found.assignedCourseIds : defaultCourseIds
+        };
+        setLoggedInStudent(student);
         setActiveRole('student');
-        return { success: true, student: found };
+        return { success: true, student };
       }
       return { success: false, error: 'Invalid Student ID/Email or Password' };
     }
