@@ -58,13 +58,15 @@ router.post('/login', async (req, res) => {
     const student = await Student.findOne({
       where: { email: loginValue }
     }) || await Student.findOne({
-      where: { rollNumber: loginValue }
-    }) || await Student.findOne({
       where: { roll: loginValue }
+    }) || await Student.findOne({
+      where: { rollNumber: loginValue }
     });
 
     if (!student) return res.status(401).json({ error: 'Invalid Student ID/Email or Password' });
-    if (student.password !== password) return res.status(401).json({ error: 'Invalid Student ID/Email or Password' });
+    if (student.password && student.password !== password) {
+      return res.status(401).json({ error: 'Invalid Student ID/Email or Password' });
+    }
 
     res.json({ user: normalizeStudent(student) });
   } catch (e) {
@@ -83,7 +85,7 @@ router.get('/:id/quizzes', async (req, res) => {
   res.json(quizzes);
 });
 
-// Student submits answers and optionally files (section B)
+// Student submits answers and optionally files
 router.post('/:id/submissions', async (req, res) => {
   try {
     const student = await Student.findByPk(req.params.id);
@@ -93,13 +95,33 @@ router.post('/:id/submissions', async (req, res) => {
     const isMultipart = contentType.includes('multipart/form-data');
 
     const handleSubmission = async () => {
-      const { quizId } = req.body;
-      let answers = req.body.answers;
+      let payload = req.body;
+      let answers = payload.answers;
+      let details = payload.details;
+
       if (typeof answers === 'string') {
-        try { answers = JSON.parse(answers); } catch (e) { /* keep as string */ }
+        try { answers = JSON.parse(answers); } catch (e) {}
+      }
+      if (typeof details === 'string') {
+        try { details = JSON.parse(details); } catch (e) {}
       }
 
-      const submission = await Submission.create({ StudentId: student.id, QuizId: quizId, answers: answers || null });
+      const submission = await Submission.create({
+        StudentId: student.id,
+        QuizId: payload.quizId,
+        quizId: payload.quizId,
+        quizTitle: payload.quizTitle,
+        studentName: payload.studentName || student.name,
+        studentId: payload.studentId || student.rollNumber || student.roll,
+        score: Number(payload.score) || 0,
+        totalQuestions: Number(payload.totalQuestions) || 0,
+        scorePercentage: Number(payload.scorePercentage) || 0,
+        passThreshold: Number(payload.passThreshold) || 70,
+        isPassed: Boolean(payload.isPassed),
+        timeTakenSeconds: Number(payload.timeTakenSeconds) || 0,
+        answers: answers || null,
+        details: details || null,
+      });
 
       if (req.files && req.files.length) {
         const fileRecords = req.files.map(f => ({
@@ -113,7 +135,7 @@ router.post('/:id/submissions', async (req, res) => {
         await FileSubmission.bulkCreate(fileRecords);
       }
 
-      res.json({ submissionId: submission.id });
+      res.json({ submissionId: submission.id, submission });
     };
 
     if (isMultipart) {
@@ -122,7 +144,6 @@ router.post('/:id/submissions', async (req, res) => {
         await handleSubmission();
       });
     } else {
-      // JSON body
       await handleSubmission();
     }
 

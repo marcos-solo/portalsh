@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { Admin, Trainer, Student, Quiz, Question, Submission, FileSubmission } = require('../models');
+const { Admin, Trainer, Student, Course, Quiz, Question, Submission, FileSubmission } = require('../models');
 require('dotenv').config();
 
 function normalizeStudent(student) {
@@ -76,29 +76,57 @@ router.post('/trainers/login', async (req, res) => {
   }
 });
 
-router.get('/trainers', authMiddleware, async (req, res) => {
+router.get('/trainers', async (req, res) => {
   try {
     const trainers = await Trainer.findAll({ order: [['id', 'DESC']] });
-    res.json(trainers.map(normalizeTrainer));
+    res.json(trainers.map(t => normalizeTrainer(t)));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-router.post('/trainers', authMiddleware, async (req, res) => {
+router.post('/trainers', async (req, res) => {
   try {
     const { name, email, password, assignedCourseIds = [] } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
-    const passwordHash = bcrypt.hashSync(password, 10);
+    if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+    const pass = password || 'password123';
+    const passwordHash = bcrypt.hashSync(pass, 10);
     const trainer = await Trainer.create({ name, email, passwordHash, assignedCourseIds });
+    res.json(normalizeTrainer(trainer, pass));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.put('/trainers/:id', async (req, res) => {
+  try {
+    const trainer = await Trainer.findByPk(req.params.id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+    const { name, email, password, assignedCourseIds } = req.body;
+    if (name) trainer.name = name;
+    if (email) trainer.email = email;
+    if (password) trainer.passwordHash = bcrypt.hashSync(password, 10);
+    if (assignedCourseIds) trainer.assignedCourseIds = assignedCourseIds;
+    await trainer.save();
     res.json(normalizeTrainer(trainer, password));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-// Protected routes
-router.post('/students', authMiddleware, async (req, res) => {
+router.delete('/trainers/:id', async (req, res) => {
+  try {
+    const trainer = await Trainer.findByPk(req.params.id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+    await trainer.destroy();
+    res.json({ success: true, id: req.params.id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Protected & Public Student endpoints
+router.post('/students', async (req, res) => {
   try {
     const { name, email, roll, rollNumber, password, assignedCourseIds = [] } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
@@ -121,7 +149,7 @@ router.post('/students', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/students', authMiddleware, async (req, res) => {
+router.get('/students', async (req, res) => {
   try {
     const students = await Student.findAll({ order: [['id', 'DESC']] });
     res.json(students.map(normalizeStudent));
@@ -130,7 +158,58 @@ router.get('/students', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/quizzes', authMiddleware, async (req, res) => {
+// Courses Endpoints
+router.get('/courses', async (req, res) => {
+  try {
+    const courses = await Course.findAll({ order: [['id', 'ASC']] });
+    res.json(courses);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/courses', async (req, res) => {
+  try {
+    const course = await Course.create(req.body);
+    res.json(course);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.put('/courses/:id', async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    await course.update(req.body);
+    res.json(course);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/courses/:id', async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    await course.destroy();
+    res.json({ success: true, id: req.params.id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Quizzes Endpoints
+router.get('/quizzes', async (req, res) => {
+  try {
+    const quizzes = await Quiz.findAll({ order: [['id', 'ASC']] });
+    res.json(quizzes);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/quizzes', async (req, res) => {
   try {
     const q = await Quiz.create(req.body);
     res.json(q);
@@ -139,7 +218,29 @@ router.post('/quizzes', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/quizzes/:quizId/questions', authMiddleware, async (req, res) => {
+router.put('/quizzes/:id', async (req, res) => {
+  try {
+    const quiz = await Quiz.findByPk(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    await quiz.update(req.body);
+    res.json(quiz);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/quizzes/:id', async (req, res) => {
+  try {
+    const quiz = await Quiz.findByPk(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    await quiz.destroy();
+    res.json({ success: true, id: req.params.id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/quizzes/:quizId/questions', async (req, res) => {
   try {
     const quiz = await Quiz.findByPk(req.params.quizId);
     if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
@@ -150,9 +251,13 @@ router.post('/quizzes/:quizId/questions', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/submissions', authMiddleware, async (req, res) => {
-  const subs = await Submission.findAll({ include: [Student, Quiz, FileSubmission] });
-  res.json(subs);
+router.get('/submissions', async (req, res) => {
+  try {
+    const subs = await Submission.findAll({ order: [['id', 'DESC']], include: [Student, Quiz, FileSubmission] });
+    res.json(subs);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // Change password (admin must provide current password)
@@ -164,7 +269,6 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     if (!admin) return res.status(404).json({ error: 'Admin not found' });
     const ok = admin.verifyPassword(currentPassword);
     if (!ok) return res.status(401).json({ error: 'Invalid current password' });
-    const bcrypt = require('bcryptjs');
     admin.passwordHash = bcrypt.hashSync(newPassword, 10);
     await admin.save();
     res.json({ success: true });

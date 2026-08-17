@@ -3,10 +3,23 @@ const router = express.Router();
 const upload = require('../middleware/upload');
 const { Submission, FileSubmission, Student, Quiz } = require('../models');
 
+router.get('/', async (req, res) => {
+  try {
+    const subs = await Submission.findAll({ order: [['id', 'DESC']], include: [Student, Quiz, FileSubmission] });
+    res.json(subs);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
-  const sub = await Submission.findByPk(req.params.id, { include: [Student, Quiz, FileSubmission] });
-  if (!sub) return res.status(404).json({ error: 'Not found' });
-  res.json(sub);
+  try {
+    const sub = await Submission.findByPk(req.params.id, { include: [Student, Quiz, FileSubmission] });
+    if (!sub) return res.status(404).json({ error: 'Not found' });
+    res.json(sub);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Upload files for an existing submission (admin or student)

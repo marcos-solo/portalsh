@@ -133,7 +133,24 @@ export const QuizProvider = ({ children }) => {
   });
 
   useEffect(() => {
-    if (!adminToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const backendCourses = await api.fetchCourses();
+        if (!cancelled && Array.isArray(backendCourses) && backendCourses.length > 0) {
+          setCourses(backendCourses.map(c => ({
+            ...c,
+            id: String(c.id)
+          })));
+        }
+      } catch (e) {
+        console.warn('Courses fetch skipped; local fallback active.', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -167,6 +184,57 @@ export const QuizProvider = ({ children }) => {
         }
       } catch (e) {
         console.warn('Student fetch skipped; local fallback is active.', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch Quizzes from DB
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const backendQuizzes = await api.fetchQuizzes();
+        if (!cancelled && Array.isArray(backendQuizzes) && backendQuizzes.length > 0) {
+          setQuizzes(backendQuizzes.map(q => ({
+            ...q,
+            id: String(q.id),
+            courseId: q.courseId || 'course_1',
+            questions: Array.isArray(q.questions) ? q.questions : []
+          })));
+        }
+      } catch (e) {
+        console.warn('Quizzes fetch skipped; local fallback active.', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch Results / Submissions from DB
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const backendSubs = await api.fetchSubmissions();
+        if (!cancelled && Array.isArray(backendSubs) && backendSubs.length > 0) {
+          setResultsHistory(backendSubs.map(s => ({
+            id: 'res_' + s.id,
+            quizId: s.quizId || (s.Quiz ? s.Quiz.id : null),
+            quizTitle: s.quizTitle || (s.Quiz ? s.Quiz.title : 'Exam'),
+            studentName: s.studentName || (s.Student ? s.Student.name : 'Student'),
+            studentId: s.studentId || (s.Student ? s.Student.rollNumber : ''),
+            submittedAt: s.submittedAt || s.createdAt,
+            score: s.score || 0,
+            totalQuestions: s.totalQuestions || 0,
+            scorePercentage: s.scorePercentage || 0,
+            passThreshold: s.passThreshold || 70,
+            isPassed: Boolean(s.isPassed),
+            timeTakenSeconds: s.timeTakenSeconds || 0,
+            details: Array.isArray(s.details) ? s.details : []
+          })));
+        }
+      } catch (e) {
+        console.warn('Submissions fetch skipped; local fallback active.', e);
       }
     })();
     return () => { cancelled = true; };
@@ -274,25 +342,44 @@ export const QuizProvider = ({ children }) => {
   // ----------------------------------------------------
   // COURSE ACTIONS (ADMIN)
   // ----------------------------------------------------
-  const createCourse = (courseData) => {
-    const newCourse = {
-      id: 'course_' + Date.now(),
+  const createCourse = async (courseData) => {
+    const payload = {
       code: courseData.code || 'COURSE-' + Math.floor(100 + Math.random() * 900),
       title: courseData.title || 'Untitled Course',
       description: courseData.description || '',
-      createdAt: new Date().toISOString()
     };
-    setCourses((prev) => [newCourse, ...prev]);
-    return newCourse;
+    try {
+      const savedCourse = await api.createCourse(payload);
+      const normalized = { ...savedCourse, id: String(savedCourse.id) };
+      setCourses((prev) => [normalized, ...prev.filter(c => c.id !== normalized.id)]);
+      return normalized;
+    } catch (e) {
+      const newCourse = {
+        id: 'course_' + Date.now(),
+        ...payload,
+        createdAt: new Date().toISOString()
+      };
+      setCourses((prev) => [newCourse, ...prev]);
+      return newCourse;
+    }
   };
 
-  const updateCourse = (courseId, updatedData) => {
-    setCourses((prev) => prev.map((c) => (c.id === courseId ? { ...c, ...updatedData } : c)));
+  const updateCourse = async (courseId, updatedData) => {
+    try {
+      await api.updateCourse(courseId, updatedData);
+    } catch (e) {
+      console.warn('API updateCourse skipped', e);
+    }
+    setCourses((prev) => prev.map((c) => (c.id === courseId || String(c.id) === String(courseId) ? { ...c, ...updatedData } : c)));
   };
 
-  const deleteCourse = (courseId) => {
-    setCourses((prev) => prev.filter((c) => c.id !== courseId));
-    // Remove assigned course from trainers & students
+  const deleteCourse = async (courseId) => {
+    try {
+      await api.deleteCourse(courseId);
+    } catch (e) {
+      console.warn('API deleteCourse skipped', e);
+    }
+    setCourses((prev) => prev.filter((c) => c.id !== courseId && String(c.id) !== String(courseId)));
     setTrainers((prev) => prev.map(t => ({
       ...t,
       assignedCourseIds: (t.assignedCourseIds || []).filter(id => id !== courseId)
@@ -338,16 +425,26 @@ export const QuizProvider = ({ children }) => {
     }
   };
 
-  const updateTrainer = (trainerId, updatedData) => {
-    setTrainers((prev) => prev.map((t) => (t.id === trainerId ? { ...t, ...updatedData } : t)));
-    if (loggedInTrainer && loggedInTrainer.id === trainerId) {
+  const updateTrainer = async (trainerId, updatedData) => {
+    try {
+      await api.updateTrainer(trainerId, updatedData);
+    } catch (e) {
+      console.warn('API updateTrainer skipped', e);
+    }
+    setTrainers((prev) => prev.map((t) => (t.id === trainerId || String(t.id) === String(trainerId) ? { ...t, ...updatedData } : t)));
+    if (loggedInTrainer && (loggedInTrainer.id === trainerId || String(loggedInTrainer.id) === String(trainerId))) {
       setLoggedInTrainer(prev => ({ ...prev, ...updatedData }));
     }
   };
 
-  const deleteTrainer = (trainerId) => {
-    setTrainers((prev) => prev.filter((t) => t.id !== trainerId));
-    if (loggedInTrainer && loggedInTrainer.id === trainerId) {
+  const deleteTrainer = async (trainerId) => {
+    try {
+      await api.deleteTrainer(trainerId);
+    } catch (e) {
+      console.warn('API deleteTrainer skipped', e);
+    }
+    setTrainers((prev) => prev.filter((t) => t.id !== trainerId && String(t.id) !== String(trainerId)));
+    if (loggedInTrainer && (loggedInTrainer.id === trainerId || String(loggedInTrainer.id) === String(trainerId))) {
       setLoggedInTrainer(null);
     }
   };
@@ -491,9 +588,8 @@ export const QuizProvider = ({ children }) => {
   // ----------------------------------------------------
   // EXAM / QUIZ ACTIONS (ADMIN & TRAINERS)
   // ----------------------------------------------------
-  const createQuiz = (newQuizData) => {
-    const newQuiz = {
-      id: 'quiz_' + Date.now(),
+  const createQuiz = async (newQuizData) => {
+    const payload = {
       courseId: newQuizData.courseId || courses[0]?.id || 'course_1',
       title: newQuizData.title || 'Untitled Quiz',
       description: newQuizData.description || '',
@@ -502,25 +598,53 @@ export const QuizProvider = ({ children }) => {
       shuffleQuestions: newQuizData.shuffleQuestions !== undefined ? newQuizData.shuffleQuestions : true,
       shuffleOptions: newQuizData.shuffleOptions !== undefined ? newQuizData.shuffleOptions : true,
       allowReview: true,
-      createdAt: new Date().toISOString(),
-      createdById: activeRole === 'trainer' && loggedInTrainer ? loggedInTrainer.id : 'admin',
       questions: newQuizData.questions || []
     };
-    setQuizzes((prev) => [newQuiz, ...prev]);
-    setActiveQuizId(newQuiz.id);
-    return newQuiz;
+
+    try {
+      const savedQuiz = await api.createQuiz(payload);
+      const normalized = {
+        ...savedQuiz,
+        id: String(savedQuiz.id),
+        courseId: savedQuiz.courseId || payload.courseId,
+        questions: Array.isArray(savedQuiz.questions) ? savedQuiz.questions : payload.questions
+      };
+      setQuizzes((prev) => [normalized, ...prev.filter(q => q.id !== normalized.id)]);
+      setActiveQuizId(normalized.id);
+      return normalized;
+    } catch (e) {
+      const newQuiz = {
+        id: 'quiz_' + Date.now(),
+        ...payload,
+        createdAt: new Date().toISOString(),
+        createdById: activeRole === 'trainer' && loggedInTrainer ? loggedInTrainer.id : 'admin'
+      };
+      setQuizzes((prev) => [newQuiz, ...prev]);
+      setActiveQuizId(newQuiz.id);
+      return newQuiz;
+    }
   };
 
-  const updateQuizSettings = (quizId, updatedSettings) => {
-    setQuizzes((prev) =>
-      prev.map((q) => (q.id === quizId ? { ...q, ...updatedSettings } : q))
-    );
-  };
-
-  const deleteQuiz = (quizId) => {
+  const updateQuizSettings = async (quizId, updatedSettings) => {
     setQuizzes((prev) => {
-      const filtered = prev.filter((q) => q.id !== quizId);
-      if (activeQuizId === quizId && filtered.length > 0) {
+      const updated = prev.map((q) => (q.id === quizId || String(q.id) === String(quizId) ? { ...q, ...updatedSettings } : q));
+      const targetQuiz = updated.find(q => q.id === quizId || String(q.id) === String(quizId));
+      if (targetQuiz) {
+        api.updateQuiz(quizId, targetQuiz).catch(e => console.warn('Backend quiz update skipped', e));
+      }
+      return updated;
+    });
+  };
+
+  const deleteQuiz = async (quizId) => {
+    try {
+      await api.deleteQuiz(quizId);
+    } catch (e) {
+      console.warn('API deleteQuiz skipped', e);
+    }
+    setQuizzes((prev) => {
+      const filtered = prev.filter((q) => q.id !== quizId && String(q.id) !== String(quizId));
+      if ((activeQuizId === quizId || String(activeQuizId) === String(quizId)) && filtered.length > 0) {
         setActiveQuizId(filtered[0].id);
       }
       return filtered;
@@ -538,47 +662,62 @@ export const QuizProvider = ({ children }) => {
       category: questionData.category || 'General'
     };
 
-    setQuizzes((prev) =>
-      prev.map((quiz) => {
-        if (quiz.id === quizId) {
+    setQuizzes((prev) => {
+      const updated = prev.map((quiz) => {
+        if (quiz.id === quizId || String(quiz.id) === String(quizId)) {
           return {
             ...quiz,
-            questions: [...quiz.questions, newQuestion]
+            questions: [...(quiz.questions || []), newQuestion]
           };
         }
         return quiz;
-      })
-    );
+      });
+      const targetQuiz = updated.find(q => q.id === quizId || String(q.id) === String(quizId));
+      if (targetQuiz) {
+        api.updateQuiz(quizId, targetQuiz).catch(e => console.warn('Backend question sync skipped', e));
+      }
+      return updated;
+    });
   };
 
   const updateQuestion = (quizId, questionId, questionData) => {
-    setQuizzes((prev) =>
-      prev.map((quiz) => {
-        if (quiz.id === quizId) {
+    setQuizzes((prev) => {
+      const updated = prev.map((quiz) => {
+        if (quiz.id === quizId || String(quiz.id) === String(quizId)) {
           return {
             ...quiz,
-            questions: quiz.questions.map((q) =>
+            questions: (quiz.questions || []).map((q) =>
               q.id === questionId ? { ...q, ...questionData } : q
             )
           };
         }
         return quiz;
-      })
-    );
+      });
+      const targetQuiz = updated.find(q => q.id === quizId || String(q.id) === String(quizId));
+      if (targetQuiz) {
+        api.updateQuiz(quizId, targetQuiz).catch(e => console.warn('Backend question update skipped', e));
+      }
+      return updated;
+    });
   };
 
   const deleteQuestion = (quizId, questionId) => {
-    setQuizzes((prev) =>
-      prev.map((quiz) => {
-        if (quiz.id === quizId) {
+    setQuizzes((prev) => {
+      const updated = prev.map((quiz) => {
+        if (quiz.id === quizId || String(quiz.id) === String(quizId)) {
           return {
             ...quiz,
-            questions: quiz.questions.filter((q) => q.id !== questionId)
+            questions: (quiz.questions || []).filter((q) => q.id !== questionId)
           };
         }
         return quiz;
-      })
-    );
+      });
+      const targetQuiz = updated.find(q => q.id === quizId || String(q.id) === String(quizId));
+      if (targetQuiz) {
+        api.updateQuiz(quizId, targetQuiz).catch(e => console.warn('Backend question delete skipped', e));
+      }
+      return updated;
+    });
   };
 
   const shuffleQuizMasterQuestions = (quizId) => {

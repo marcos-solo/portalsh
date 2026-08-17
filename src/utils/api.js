@@ -50,32 +50,10 @@ export async function changeAdminPassword(currentPassword, newPassword) {
   return request('/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }) });
 }
 
+// Students API
 export async function fetchStudents() {
   const data = await request('/students');
   return Array.isArray(data) ? data.map(normalizeStudent) : [];
-}
-
-export async function fetchTrainers() {
-  const data = await request('/admin/trainers');
-  return Array.isArray(data) ? data.map(normalizeTrainer) : [];
-}
-
-export async function createTrainer(payload) {
-  const data = await request('/admin/trainers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return normalizeTrainer(data);
-}
-
-export async function loginTrainer(email, password) {
-  const data = await request('/admin/trainers/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  return { user: normalizeTrainer(data.user) };
 }
 
 export async function registerStudent({ name, email, roll, rollNumber, password, assignedCourseIds }) {
@@ -96,8 +74,103 @@ export async function loginStudent(identifier, password) {
   return { user: normalizeStudent(data.user) };
 }
 
-export async function submitStudentSubmission({ studentId, quizId, answers, files }) {
-  // If files provided, use FormData
+// Trainers API
+export async function fetchTrainers() {
+  const data = await request('/admin/trainers');
+  return Array.isArray(data) ? data.map(normalizeTrainer) : [];
+}
+
+export async function createTrainer(payload) {
+  const data = await request('/admin/trainers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return normalizeTrainer(data);
+}
+
+export async function updateTrainer(id, payload) {
+  const data = await request(`/admin/trainers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return normalizeTrainer(data);
+}
+
+export async function deleteTrainer(id) {
+  return request(`/admin/trainers/${id}`, { method: 'DELETE' });
+}
+
+export async function loginTrainer(email, password) {
+  const data = await request('/admin/trainers/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  return { user: normalizeTrainer(data.user) };
+}
+
+// Courses API
+export async function fetchCourses() {
+  const data = await request('/admin/courses');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createCourse(payload) {
+  return request('/admin/courses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCourse(id, payload) {
+  return request(`/admin/courses/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCourse(id) {
+  return request(`/admin/courses/${id}`, { method: 'DELETE' });
+}
+
+// Quizzes API
+export async function fetchQuizzes() {
+  const data = await request('/admin/quizzes');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createQuiz(payload) {
+  return request('/admin/quizzes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateQuiz(id, payload) {
+  return request(`/admin/quizzes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteQuiz(id) {
+  return request(`/admin/quizzes/${id}`, { method: 'DELETE' });
+}
+
+// Submissions API
+export async function fetchSubmissions() {
+  const data = await request('/submissions');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function submitStudentSubmission(payload) {
+  const { studentId, quizId, answers, files } = payload;
   if (files && files.length) {
     const form = new FormData();
     form.append('quizId', quizId);
@@ -108,7 +181,11 @@ export async function submitStudentSubmission({ studentId, quizId, answers, file
     return res.json();
   }
 
-  return request(`/students/${studentId}/submissions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quizId, answers }) });
+  return request(`/students/${studentId}/submissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function uploadFilesToSubmission(submissionId, files) {
@@ -119,4 +196,26 @@ export async function uploadFilesToSubmission(submissionId, files) {
   return res.json();
 }
 
-export default { loginAdmin, changeAdminPassword, fetchStudents, fetchTrainers, createTrainer, loginTrainer, registerStudent, loginStudent, submitStudentSubmission, uploadFilesToSubmission };
+export default {
+  loginAdmin,
+  changeAdminPassword,
+  fetchStudents,
+  registerStudent,
+  loginStudent,
+  fetchTrainers,
+  createTrainer,
+  updateTrainer,
+  deleteTrainer,
+  loginTrainer,
+  fetchCourses,
+  createCourse,
+  updateCourse,
+  deleteCourse,
+  fetchQuizzes,
+  createQuiz,
+  updateQuiz,
+  deleteQuiz,
+  fetchSubmissions,
+  submitStudentSubmission,
+  uploadFilesToSubmission
+};
