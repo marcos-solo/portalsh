@@ -3,7 +3,6 @@ const { DataTypes } = require('sequelize');
 module.exports = (sequelize) => {
   return sequelize.define('Submission', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    quizId: { type: DataTypes.STRING },
     quizTitle: { type: DataTypes.STRING },
     studentName: { type: DataTypes.STRING },
     studentId: { type: DataTypes.STRING },

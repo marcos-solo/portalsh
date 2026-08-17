@@ -171,8 +171,18 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 async function start() {
-  await sequelize.sync({ alter: true });
-  await seedDefaultData();
+  try {
+    await sequelize.sync();
+  } catch (err) {
+    console.warn('Sequelize sync warning (proceeding to start server):', err.message);
+  }
+
+  try {
+    await seedDefaultData();
+  } catch (err) {
+    console.warn('Seeding notice (proceeding to start server):', err.message);
+  }
+
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 
