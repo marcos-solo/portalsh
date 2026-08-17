@@ -92,6 +92,23 @@ export const QuizProvider = ({ children }) => {
     return localStorage.getItem('ccna_admin_token') || null;
   });
 
+  const refreshUserListsFromServer = async () => {
+    try {
+      const [backendTrainers, backendStudents] = await Promise.all([
+        api.fetchTrainers(),
+        api.fetchStudents()
+      ]);
+      if (Array.isArray(backendTrainers) && backendTrainers.length > 0) {
+        setTrainers(backendTrainers);
+      }
+      if (Array.isArray(backendStudents) && backendStudents.length > 0) {
+        setStudents(backendStudents);
+      }
+    } catch (e) {
+      console.warn('Server refresh skipped; using local cache fallback.', e);
+    }
+  };
+
   // Active Role: 'admin' | 'trainer' | 'student'
   const [activeRole, setActiveRole] = useState(() => {
     return localStorage.getItem(ROLE_STORAGE_KEY) || 'admin';
@@ -116,6 +133,7 @@ export const QuizProvider = ({ children }) => {
   });
 
   useEffect(() => {
+    if (!adminToken) return;
     let cancelled = false;
     (async () => {
       try {
@@ -128,7 +146,7 @@ export const QuizProvider = ({ children }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [adminToken]);
 
   // Students state
   const [students, setStudents] = useState(() => {
@@ -140,6 +158,7 @@ export const QuizProvider = ({ children }) => {
   });
 
   useEffect(() => {
+    if (!adminToken) return;
     let cancelled = false;
     (async () => {
       try {
@@ -152,7 +171,7 @@ export const QuizProvider = ({ children }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [adminToken]);
 
   // Logged-in Trainer
   const [loggedInTrainer, setLoggedInTrainer] = useState(() => {
@@ -794,6 +813,7 @@ export const QuizProvider = ({ children }) => {
         setActiveRole('admin');
         localStorage.setItem('ccna_admin_token', res.token);
         localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+        await refreshUserListsFromServer();
         return { success: true };
       }
     } catch (e) {}
